@@ -44,15 +44,13 @@ class CesiumCardCreator {
   pdfDoc: PDFKit.PDFDocument
   qr: QRCode
 
-  constructor(uid: string, pubKey: string, width: number, height: number) {
+  constructor(uid: string, pubKey: string, pdfDoc: PDFKit.PDFDocument) {
     this.uid = uid
     this.pubKey = pubKey
-    this.width = width
-    this.height = height
-    // generate PDF
-    this.pdfDoc = new PDFDocument({ size: [width, height], margin: 0 })
-    this.pdfDoc.registerFont('Fontawesome', 'fonts/Font-Awesome-6-Free-Solid-900.otf')
-    this.pdfDoc.pipe(fs.createWriteStream(`user-${uid}.pdf`))
+    this.pdfDoc = pdfDoc
+    const size = pdfDoc.options.size as number[]
+    this.width = size[0]
+    this.height = size[1]
 
     // Generate QrCode
     this.qr = QRCode(4, 'M')
@@ -74,8 +72,6 @@ class CesiumCardCreator {
     for (let position = 1; position < 5; position++) {
       this.buildCard(position, image)
     }
-
-    this.pdfDoc.end()
   }
 
   buildCard(position: number, image: Buffer) {
@@ -164,7 +160,15 @@ class CesiumCardCreator {
   }
 }
 
-const go = async (keys: string[]) => {
+// generate PDF
+const getPdf = (name: string): PDFKit.PDFDocument => {
+  const pdfDoc = new PDFDocument({ size: [1240, 1754], margin: 0 }) // 150dpi
+  pdfDoc.pipe(fs.createWriteStream(name))
+  pdfDoc.registerFont('Fontawesome', 'fonts/Font-Awesome-6-Free-Solid-900.otf')
+  return pdfDoc
+}
+
+const go = async (keys: string[], oneFileOutput: boolean) => {
   const duniter = axios.create({
     baseURL: 'https://g1.duniter.org',
     timeout: 10000,
@@ -174,10 +178,14 @@ const go = async (keys: string[]) => {
     timeout: 10000,
   })
 
+  console.log('oneFileOutput:', oneFileOutput)
+
+  let pdfDoc: PDFKit.PDFDocument = getPdf(`user-all.pdf`)
+
   for (const pubKey of keys) {
     let isWorking = true
     let uid = ''
-    
+
     try {
       const response = await duniter.get('/wot/lookup/' + pubKey)
       uid = response.data.results[0].uids[0].uid
@@ -193,23 +201,44 @@ const go = async (keys: string[]) => {
         console.error(`User from public key: ${pubKey} hasn't be found`)
         continue
       }
-      isWorking = true;
+      isWorking = true
       // get user uid
       uid = response.data._source.title
     }
 
-    if (!isWorking) continue;
+    if (!isWorking) continue
 
-    const builder = new CesiumCardCreator(uid, pubKey, 1240, 1754) // 150dpi
+    if (!oneFileOutput) {
+      pdfDoc = getPdf(`user-${uid}.pdf`)
+    }
+
+    const builder = new CesiumCardCreator(uid, pubKey, pdfDoc)
     await builder.build()
 
-    console.log(`Created file: user-${uid}.pdf`)
+    if (oneFileOutput) {
+      console.log(`add page for ${uid}`)
+      pdfDoc.addPage()
+    } else {
+      console.log(`Created file: user-${uid}.pdf`)
+      pdfDoc.end()
+    }
+
+  }
+  if (oneFileOutput) {
+    pdfDoc.end()
   }
   console.log(`>> end`)
 }
 
-let keys = process.argv.slice(2)
-if (keys[0] === 'file') {
+let oneFileOutput = false
+const args = process.argv.slice(2)
+let keys = [...args]
+
+if (args[0] === 'file') {
   keys = fs.readFileSync('.profiles').toString().split('\n')
+  if (args[1] && args[1] === 'c') {
+    oneFileOutput = true
+  }
 }
-go(keys)
+
+go(keys, oneFileOutput)
