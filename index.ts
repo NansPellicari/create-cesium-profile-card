@@ -103,10 +103,18 @@ class CesiumCardCreator {
       },
     }
 
+    const idToolong = this.uid.length > 15 ? true : false
+    console.log('id too long: ' + idToolong)
+
     addTextbox(
       [
-        { text: 'identifiant: ', lineHeight: 50, fontSize: boxStyle.fontSize.base },
-        { text: `${this.uid}`, fontSize: boxStyle.fontSize.highlight, lineHeight: 50, font: 'Helvetica-Bold' },
+        { text: 'identifiant: ', fontSize: boxStyle.fontSize.base },
+        {
+          text: `${this.uid}`,
+          fontSize: boxStyle.fontSize.highlight,
+          newLine: idToolong,
+          font: 'Helvetica-Bold',
+        },
       ],
       this.pdfDoc,
       baseX + boxStyle.x,
@@ -114,7 +122,7 @@ class CesiumCardCreator {
       boxStyle.width,
       boxStyle.textStyle,
     )
-    Y += boxStyle.y
+    Y += boxStyle.y + (idToolong ? boxStyle.y : 0)
 
     addTextbox(
       [
@@ -157,32 +165,51 @@ class CesiumCardCreator {
 }
 
 const go = async (keys: string[]) => {
-  const instance = axios.create({
+  const duniter = axios.create({
     baseURL: 'https://g1.duniter.org',
     timeout: 10000,
-    headers: { 'X-Custom-Header': 'foobar' },
+  })
+  const presle = axios.create({
+    baseURL: 'https://g1.data.presles.fr',
+    timeout: 10000,
   })
 
   for (const pubKey of keys) {
+    let isWorking = true
+    let uid = ''
+    
     try {
-      const response = await instance.get('/wot/lookup/' + pubKey)
-      // get user uid
-      const uid = response.data.results[0].uids[0].uid
-
-      const builder = new CesiumCardCreator(uid, pubKey, 1240, 1754) // 150dpi
-      await builder.build()
-
-      console.log(`Created file: user-${uid}.pdf`)
+      const response = await duniter.get('/wot/lookup/' + pubKey)
+      uid = response.data.results[0].uids[0].uid
     } catch (error) {
       console.error('Error occured')
       console.error(error)
+      isWorking = false
     }
+
+    if (!isWorking) {
+      const response = await presle.get('/user/profile/' + pubKey)
+      if (response.data.found === false) {
+        console.error(`User from public key: ${pubKey} hasn't be found`)
+        continue
+      }
+      isWorking = true;
+      // get user uid
+      uid = response.data._source.title
+    }
+
+    if (!isWorking) continue;
+
+    const builder = new CesiumCardCreator(uid, pubKey, 1240, 1754) // 150dpi
+    await builder.build()
+
+    console.log(`Created file: user-${uid}.pdf`)
   }
   console.log(`>> end`)
 }
 
 let keys = process.argv.slice(2)
 if (keys[0] === 'file') {
-  keys = fs.readFileSync('.profiles').toString().split("\n")
+  keys = fs.readFileSync('.profiles').toString().split('\n')
 }
 go(keys)
