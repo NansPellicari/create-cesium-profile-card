@@ -181,5 +181,8 @@ const go = async (keys: string[]) => {
   console.log(`>> end`)
 }
 
-const keys = process.argv.slice(2)
+let keys = process.argv.slice(2)
+if (keys[0] === 'file') {
+  keys = fs.readFileSync('.profiles').toString().split("\n")
+}
 go(keys)

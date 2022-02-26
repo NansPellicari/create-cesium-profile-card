@@ -17,3 +17,7 @@ pnpm i
 ```bash
 pnpm start 4FHhfYtv5bdjKrqmXvTdWLPpgiXALm7ZKAcw2iavSTGn
 ```
+or you can create a `.profiles` file and create a new line for each a public key, then launch:
+```bash
+pnpm start file
+```
