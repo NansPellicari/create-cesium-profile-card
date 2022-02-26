@@ -4,15 +4,20 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "./index.js"
+    "start": " ts-node index.ts"
   },
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@types/node": "^17.0.21",
+    "@types/pdfkit": "^0.12.3",
     "axios": "^0.26.0",
     "gif-frames": "^1.0.1",
     "pdfkit": "^0.13.0",
     "qrcode-generator": "^1.4.4",
-    "stream-buffers": "^3.0.2"
+    "stream-buffers": "^3.0.2",
+    "textbox-for-pdfkit": "^0.2.1",
+    "ts-node": "^10.5.0",
+    "typescript": "^4.5.5"
   }
 }
