@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import axios from 'axios'
+import axios, { AxiosInstance } from 'axios'
 import addTextbox, { TextStyle } from 'textbox-for-pdfkit'
 import QRCode from 'qrcode-generator'
 import fs from 'fs'
@@ -100,7 +100,6 @@ class CesiumCardCreator {
     }
 
     const idToolong = this.uid.length > 15 ? true : false
-    console.log('id too long: ' + idToolong)
 
     addTextbox(
       [
@@ -160,6 +159,68 @@ class CesiumCardCreator {
   }
 }
 
+class PublicKey {
+  originalKey: string
+  splittedKey: boolean
+  name: string = ''
+  key: string
+
+  constructor(originalKey: string) {
+    this.originalKey = originalKey
+    const splitKey = originalKey.split(':')
+    if ((this.splittedKey = splitKey.length === 2)) {
+      this.key = splitKey[1]
+      this.name = splitKey[0]
+    } else this.key = this.originalKey
+  }
+}
+
+class UserData {
+  duniter: AxiosInstance
+  presle: AxiosInstance
+
+  constructor() {
+    this.duniter = axios.create({
+      baseURL: 'https://g1.duniter.org',
+      timeout: 10000,
+    })
+    this.presle = axios.create({
+      baseURL: 'https://g1.data.presles.fr',
+      timeout: 10000,
+    })
+  }
+
+  async getUid(pubKey: PublicKey): Promise<string> {
+    // this doesnt't fetch any data from API
+    if (pubKey.splittedKey) {
+      return pubKey.name
+    }
+
+    // this will try to fetch from duniter API
+    try {
+      const response = await this.duniter.get('/wot/lookup/' + pubKey.key)
+      return response.data.results[0].uids[0].uid
+    } catch (error) {
+      console.error('Error occured with Duniter call')
+      console.error(error)
+    }
+
+    // this will try to fetch from presle API
+    try {
+      const response = await this.presle.get('/user/profile/' + pubKey.key)
+      if (response.data.found === false) {
+        throw new Error(`User with public key ${pubKey.key} hasn't be found`)
+      }
+      // get user uid
+      return response.data._source.title
+    } catch (error) {
+      console.error('Error occured with Presle call')
+      console.error(error)
+    }
+    return ''
+  }
+}
+
 // generate PDF
 const getPdf = (name: string): PDFKit.PDFDocument => {
   const pdfDoc = new PDFDocument({ size: [1240, 1754], margin: 0 }) // 150dpi
@@ -169,63 +230,32 @@ const getPdf = (name: string): PDFKit.PDFDocument => {
 }
 
 const go = async (keys: string[], oneFileOutput: boolean) => {
-  const duniter = axios.create({
-    baseURL: 'https://g1.duniter.org',
-    timeout: 10000,
-  })
-  const presle = axios.create({
-    baseURL: 'https://g1.data.presles.fr',
-    timeout: 10000,
-  })
-
   console.log('oneFileOutput:', oneFileOutput)
 
+  const userData = new UserData()
   let pdfDoc: PDFKit.PDFDocument = getPdf(`user-all.pdf`)
 
   for (const pubKey of keys) {
-    let isWorking = true
-    let uid = ''
-
-    try {
-      const response = await duniter.get('/wot/lookup/' + pubKey)
-      uid = response.data.results[0].uids[0].uid
-    } catch (error) {
-      console.error('Error occured')
-      console.error(error)
-      isWorking = false
-    }
-
-    if (!isWorking) {
-      const response = await presle.get('/user/profile/' + pubKey)
-      if (response.data.found === false) {
-        console.error(`User from public key: ${pubKey} hasn't be found`)
-        continue
-      }
-      isWorking = true
-      // get user uid
-      uid = response.data._source.title
-    }
-
-    if (!isWorking) continue
+    const keyObj = new PublicKey(pubKey)
+    const uid = await userData.getUid(keyObj)
+    if (uid === '') continue
 
     if (!oneFileOutput) {
       pdfDoc = getPdf(`user-${uid}.pdf`)
     }
 
-    const builder = new CesiumCardCreator(uid, pubKey, pdfDoc)
+    const builder = new CesiumCardCreator(uid, keyObj.key, pdfDoc)
     await builder.build()
 
-    if (oneFileOutput) {
+    if (oneFileOutput && keyObj.originalKey !== keys[keys.length - 1]) {
       console.log(`add page for ${uid}`)
       pdfDoc.addPage()
     } else {
-      console.log(`Created file: user-${uid}.pdf`)
+      if (oneFileOutput) console.log(`Created file: user-${uid}.pdf`)
+      else console.log(`last page created for: user-${uid}.pdf`)
+
       pdfDoc.end()
     }
-
-  }
-  if (oneFileOutput) {
-    pdfDoc.end()
   }
   console.log(`>> end`)
 }
